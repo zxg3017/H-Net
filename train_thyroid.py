@@ -18,29 +18,29 @@ import utils as utils
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 #### train dataset
 parser.add_argument('--imgs_train_path', '-it', type=str,
-                    default='/mnt/ai2019/zxg_FZU/dataset/zxg_wbc_seg/seg/train/images/', help='imgs train data path.')
+                    default='/mnt/ai2019/zxg_FZU/dataset/thyroid_data/train/images/', help='imgs train data path.')
 # parser.add_argument('--imgs_coarse_mask_path', '-it', type=str,
 #                     default='/mnt/ai2019/zxg_FZU/dataset/skin_lesion_data/seg/train/Annotation/', help='coarse_mask train data path.')
 parser.add_argument('--labels_train_path', '-lt', type=str,
-                    default='/mnt/ai2019/zxg_FZU/dataset/zxg_wbc_seg/seg/train/masks/', help='labels train data path.')
+                    default='/mnt/ai2019/zxg_FZU/dataset/thyroid_data/train/masks/', help='labels train data path.')
 #### val dataset
 parser.add_argument('--imgs_val_path', '-iv', type=str,
-                    default='/mnt/ai2019/zxg_FZU/dataset/zxg_wbc_seg/seg/val/images/', help='imgs val data path.')
+                    default='/mnt/ai2019/zxg_FZU/dataset/thyroid_data/val/images/', help='imgs val data path.')
 # parser.add_argument('--imgs_val_path', '-iv', type=str,
 #                     default='/mnt/ai2019/zxg_FZU/dataset/skin_lesion_data/seg/val/Annotation/', help='imgs val data path.')
 parser.add_argument('--labels_val_path', '-lv', type=str,
-                    default='/mnt/ai2019/zxg_FZU/dataset/zxg_wbc_seg/seg/val/masks/', help='labels val data path.')
-parser.add_argument('--resize', default=256, type=int, help='resize shape')
-parser.add_argument('--batch_size', default=16,type=int,help='batchsize')
+                    default='/mnt/ai2019/zxg_FZU/dataset/thyroid_data/val/masks/', help='labels val data path.')
+parser.add_argument('--resize', default=224, type=int, help='resize shape')
+parser.add_argument('--batch_size', default=8,type=int,help='batchsize')
 parser.add_argument('--lr', default=0.0001, type=float, help='learning rate')
 parser.add_argument('--start_epoch', '-s', default=0, type=int, help='start epoch')
 parser.add_argument('--end_epoch', '-e', default=200, type=int, help='end epoch')
 parser.add_argument('--times', '-t', default=1, type=int, help='val')
 parser.add_argument('--device', default='cuda', type=str, help='use cuda')
 parser.add_argument('--tb_path', type=str, default='log/CE_Net_101_28/', help='tensorboard path')
-parser.add_argument('--checkpoint', type=str, default='checkpoint/H_Net/wbc/', help='checkpoint path')
+parser.add_argument('--checkpoint', type=str, default='checkpoint/thyroid/resnet/', help='checkpoint path')
 parser.add_argument('--resume', '-r',default=False, action='store_true', help='resume from checkpoint')
-parser.add_argument('--devicenum', default='2', type=str, help='use devicenum')
+parser.add_argument('--devicenum', default='0', type=str, help='use devicenum')
 args = parser.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES']=args.devicenum
 torch.backends.cudnn.enabled =True
@@ -51,9 +51,10 @@ device = args.device # 是否使用cuda
 best_miou = 0  # best test accuracy
 start_epoch = args.start_epoch  # start from epoch 0 or last checkpoint epoch
 times = args.times  # 验证次数
-checkpoint_path = args.checkpoint + 'wbc_H_Net_resnet34_double_v137_hy46.pth'
-checkpoint_path_latest = args.checkpoint + 'wbc_H_Net_resnet34_double_v137_hy46_latest.pth'
+checkpoint_path = args.checkpoint + 'H_Net_resnet34_double_v137_hy46.pth'
+checkpoint_path_latest = args.checkpoint + 'H_Net_resnet34_double_v137_hy46_latest.pth'
 # checkpoint_path = '/media/user/DA18EBFA09C1B27D/codess/nodulesegmentation/checkpoint/Unet/ckpt.pth'
+
 # Data
 print('==> Preparing data..')
 
@@ -70,7 +71,8 @@ valloader = DataLoader(valset, batch_size=args.batch_size, shuffle=True, num_wor
 print('==> Building model..')
 # net = new.N_unet(3, 2)
 net = H_Net_resnet34_double_v137(3,2)
-model_name = 'wbc_H_Net_resnet34_double_v137_hy46'
+
+model_name = 'H_Net_resnet34_double_v137'
 print(model_name)
 # net = resnet_test.resnet_uunet(3,2)
 # net = resnet_test.resnet_unet_attention(3,2)
@@ -79,6 +81,8 @@ print("param size = %fMB", utils.count_parameters_in_MB(net))
 
 EPS = 1e-12
 net = net.to(device)
+
+
 # print(args.resume)
 if args.resume:
     # Load checkpoint.
@@ -89,12 +93,10 @@ if args.resume:
     best_miou = checkpoint['miou']
     start_epoch = checkpoint['epoch']
 
-criterion = Loss.CrossEntropyLoss2D().to(device)
-# criterion = nn.NLLLoss2d()
-softmax_2d = nn.Softmax2d()
-
 ce_Loss = Loss.CrossEntropyLoss2D().to(device)
-dice_Loss = Loss.myDiceLoss(2).to(device)
+dice_Loss = Loss.myDiceLoss(2).to(device)# criterion = nn.NLLLoss2d()
+
+softmax_2d = nn.Softmax2d()
 
 optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.99))
 CosineLR = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=150, eta_min=1e-8)
@@ -124,7 +126,6 @@ def train_val():
                     optimizer.step()
                     out = (out1 + out2) / 2
                     out = torch.log(softmax_2d(out) + EPS)
-
                     train_loss += loss.item()
                     predicted = out.argmax(1)
                     # predicted = outputs.argmax(1)
@@ -157,6 +158,7 @@ def train_val():
                         for batch_idx, (inputs, targets,img_path) in enumerate(valloader):
                             t.set_description("Val(Epoch {}/{})".format(epoch, args.end_epoch))
                             inputs, targets = inputs.to(device), targets.to(device)
+
 
                             out1, out2= net(inputs)
 
